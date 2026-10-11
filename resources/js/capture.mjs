@@ -92,6 +92,21 @@ async function injectChromeHider(page) {
     });
 }
 
+function normalisePath(path) {
+    return path.replace(/\/+$/, '') || '/';
+}
+
+function redirectReason(path, manifest) {
+    if (path === '/consent-option-request') return 'outstanding consent';
+    if (path === normalisePath(manifest.loginPath ?? '/login') || path.endsWith('/login')) return 'login';
+    if (/(^|\/)(profile|edit-profile|onboarding)$/.test(path)) return 'not onboarded';
+    return 'unexpected redirect';
+}
+
+// Thrown when the browser lands on a different path from the target, so
+// the run records the reason and moves on instead of saving the wrong page.
+class RedirectedCapture extends Error {}
+
 async function capturePage(context, manifest, target, viewport, mode) {
     const page = await context.newPage();
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -100,6 +115,15 @@ async function capturePage(context, manifest, target, viewport, mode) {
     await setMode(page, mode);
     await dismissBanners(page, manifest.dismissBannerIds);
     await page.reload({ waitUntil: 'domcontentloaded' });
+
+    const base = `https://${manifest.domain}`;
+    const expected = normalisePath(new URL(target.url, base).pathname);
+    const landed = normalisePath(new URL(page.url()).pathname);
+    if (landed !== expected) {
+        await page.close();
+        throw new RedirectedCapture(`capture-redirected: ${target.slug} ${viewport.name}-${mode} redirected to ${landed} (${redirectReason(landed, manifest)})`);
+    }
+
     await injectChromeHider(page);
 
     // Filament hydrates over Livewire — wait for the page chrome and
@@ -156,6 +180,7 @@ async function capturePage(context, manifest, target, viewport, mode) {
         const authPages = manifest.pages.filter((p) => (p.auth ?? 'authenticated') === 'authenticated');
 
         const captured = [];
+        const redirected = [];
 
         // 1. Unauthenticated pages — fresh context PER SHOT, not just per
         // unauth page list. Filament's middleware on /login sets a
@@ -172,9 +197,15 @@ async function capturePage(context, manifest, target, viewport, mode) {
                         for (const mode of manifest.modes) {
                             const guestContext = await browser.newContext({ ignoreHTTPSErrors: true });
                             try {
-                                const out = await capturePage(guestContext, manifest, target, viewport, mode);
-                                captured.push({ slug: target.slug, viewport: viewport.name, mode, path: out });
-                                console.error(`captured ${target.slug} ${viewport.name}-${mode} (guest)`);
+                                try {
+                                    const out = await capturePage(guestContext, manifest, target, viewport, mode);
+                                    captured.push({ slug: target.slug, viewport: viewport.name, mode, path: out });
+                                    console.error(`captured ${target.slug} ${viewport.name}-${mode} (guest)`);
+                                } catch (err) {
+                                    if (!(err instanceof RedirectedCapture)) throw err;
+                                    console.error(err.message);
+                                    redirected.push(err.message);
+                                }
                             } finally {
                                 await guestContext.close();
                             }
@@ -196,15 +227,24 @@ async function capturePage(context, manifest, target, viewport, mode) {
             for (const target of authPages) {
                 for (const viewport of manifest.viewports) {
                     for (const mode of manifest.modes) {
-                        const out = await capturePage(context, manifest, target, viewport, mode);
-                        captured.push({ slug: target.slug, viewport: viewport.name, mode, path: out });
-                        console.error(`captured ${target.slug} ${viewport.name}-${mode}`);
+                        try {
+                            const out = await capturePage(context, manifest, target, viewport, mode);
+                            captured.push({ slug: target.slug, viewport: viewport.name, mode, path: out });
+                            console.error(`captured ${target.slug} ${viewport.name}-${mode}`);
+                        } catch (err) {
+                            if (!(err instanceof RedirectedCapture)) throw err;
+                            console.error(err.message);
+                            redirected.push(err.message);
+                        }
                     }
                 }
             }
         }
 
         console.log(JSON.stringify({ captured }));
+        // Exit 5 once the browser closes: some shots landed on a different
+        // page and were not saved. exitCode (not exit()) lets stdout flush.
+        if (redirected.length > 0) process.exitCode = 5;
     } finally {
         await context.close();
         await browser.close();
