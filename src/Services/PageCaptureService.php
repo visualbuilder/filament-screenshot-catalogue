@@ -49,7 +49,7 @@ class PageCaptureService
             'outDir' => $outDir,
             'viewports' => $viewports,
             'modes' => $modes,
-            'pages' => $pages,
+            'pages' => ScreenshotConfig::withSidebarState($pages),
             'dismissBannerIds' => ScreenshotConfig::dismissibleBannerIds(),
             'captureTimeCss' => ScreenshotConfig::captureTimeCss(),
             'fullPage' => $fullPage,

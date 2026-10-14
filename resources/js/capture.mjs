@@ -18,7 +18,7 @@
  *     "outDir": "/tmp/screenshots/<run>",
  *     "viewports": [{ "name": "desktop", "width": 1280, "height": 800 }, ...],
  *     "modes": ["light", "dark"],
- *     "pages": [{ "slug": "dashboard", "url": "/" }, ...]
+ *     "pages": [{ "slug": "dashboard", "url": "/", "sidebar": "expanded" }, ...]
  *   }
  *
  * Each capture is written to:
@@ -76,6 +76,21 @@ async function dismissBanners(page, bannerIds) {
     }, idsAsStrings);
 }
 
+async function setSidebar(page, viewport, state) {
+    // Filament's sidebar store persists its open state with Alpine's
+    // $persist under the keys `isOpen` and `isOpenDesktop` (JSON). Set both
+    // on every page, not only collapsed ones: the authenticated context is
+    // shared, so a collapsed page would otherwise leak into the next shot.
+    // Below Filament's 1024px breakpoint the sidebar is an overlay, so the
+    // state is left alone there.
+    if (viewport.width < 1024) return;
+    const open = state !== 'collapsed';
+    await page.evaluate((open) => {
+        localStorage.setItem('isOpen', JSON.stringify(open));
+        localStorage.setItem('isOpenDesktop', JSON.stringify(open));
+    }, open);
+}
+
 async function injectChromeHider(page) {
     // Belt-and-braces: even with APP_DEBUG=false the catalogue should
     // never include any dev tooling, debugbar, error overlays, or
@@ -114,6 +129,7 @@ async function capturePage(context, manifest, target, viewport, mode) {
     await page.goto(`https://${manifest.domain}${target.url}`, { waitUntil: 'domcontentloaded' });
     await setMode(page, mode);
     await dismissBanners(page, manifest.dismissBannerIds);
+    await setSidebar(page, viewport, target.sidebar);
     await page.reload({ waitUntil: 'domcontentloaded' });
 
     const base = `https://${manifest.domain}`;

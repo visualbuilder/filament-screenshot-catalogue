@@ -141,6 +141,13 @@ return [
     // ',
     'capture_time_css' => '',
 
+    // Sitemap slugs captured with the main sidebar collapsed to its icon
+    // rail, for wide pages such as a mail client. Wildcards follow
+    // Str::is() ('mail*'). Needs sidebarCollapsibleOnDesktop() on the
+    // panel; desktop widths only. `--sidebar=collapsed|expanded` on
+    // screenshot:capture overrides it for one run.
+    'collapsed_sidebar_pages' => [],
+
     // Sitemap entries to omit from the catalogue. Match the `slug` field
     // in `storage/app/sitemap-{panel}.json` — Filament's `{resource}.{page}`
     // form (e.g. `users.index`, `orders.edit`) for resource pages, or the
@@ -185,6 +192,7 @@ Tag-versioning: `--tag=latest` overwrites in place (continuous capture), any oth
 | `panel:sitemap --panel=KEY` | Generate `sitemap-{panelId}.json` for the panel. Re-run when routes change. |
 | `screenshot:dispatch --panel=KEY --tag=latest` | Queue one `CapturePageScreenshotsJob` per sitemap entry plus a final `RebuildScreenshotIndexJob`. Use a queue worker. |
 | `screenshot:capture --panel=KEY --page=SLUG --tag=latest` | Synchronous run, single page or a few. Useful for debug. |
+| `screenshot:capture ... --sidebar=collapsed` | Same, with the main sidebar collapsed (or `expanded`) on every page, whatever `collapsed_sidebar_pages` says. |
 | `screenshot:rebuild-index --panel=KEY --tag=latest` | Re-render `index.html` from the existing PNGs without re-capturing. |
 
 All four accept `--panel=KEY` where `KEY` is the friendly CLI name registered in the descriptor (e.g. `admin`). The package translates to Filament's internal panel ID for URL/route resolution.

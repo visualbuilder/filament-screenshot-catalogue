@@ -139,3 +139,32 @@ it('captureScript falls back to the bundled runner when no config override is se
 it('dismissibleBannerIds returns an empty array when filament-2fa is not installed', function (): void {
     expect(ScreenshotConfig::dismissibleBannerIds())->toBe([]);
 });
+
+it('withSidebarState collapses pages matching the config patterns and expands the rest', function (): void {
+    config(['screenshot-catalogue.collapsed_sidebar_pages' => ['mail*', 'kanban.index']]);
+
+    $pages = ScreenshotConfig::withSidebarState([
+        ['slug' => 'mail.index', 'url' => '/mail'],
+        ['slug' => 'mail-dashboard', 'url' => '/mail-dashboard'],
+        ['slug' => 'kanban.index', 'url' => '/kanban'],
+        ['slug' => 'orders.index', 'url' => '/orders'],
+    ]);
+
+    expect(array_column($pages, 'sidebar'))->toBe(['collapsed', 'collapsed', 'collapsed', 'expanded']);
+});
+
+it('withSidebarState expands every page by default', function (): void {
+    expect(ScreenshotConfig::withSidebarState([['slug' => 'mail.index', 'url' => '/mail']])[0]['sidebar'])
+        ->toBe('expanded');
+});
+
+it('withSidebarState applies an override to every page and keeps a page state without one', function (): void {
+    config(['screenshot-catalogue.collapsed_sidebar_pages' => ['mail*']]);
+    $pages = [
+        ['slug' => 'mail.index', 'url' => '/mail'],
+        ['slug' => 'orders.index', 'url' => '/orders', 'sidebar' => 'collapsed'],
+    ];
+
+    expect(array_column(ScreenshotConfig::withSidebarState($pages, 'expanded'), 'sidebar'))->toBe(['expanded', 'expanded'])
+        ->and(array_column(ScreenshotConfig::withSidebarState($pages), 'sidebar'))->toBe(['collapsed', 'collapsed']);
+});

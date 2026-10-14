@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Visualbuilder\FilamentScreenshotCatalogue\Services;
 
+use Illuminate\Support\Str;
 use Visualbuilder\FilamentScreenshotCatalogue\PanelRegistry;
 
 /**
@@ -169,6 +170,28 @@ class ScreenshotConfig
     public static function captureTimeCss(): string
     {
         return (string) config('screenshot-catalogue.capture_time_css', '');
+    }
+
+    /**
+     * Give each page a `sidebar` state of 'collapsed' or 'expanded': the
+     * override when one is passed, else 'collapsed' for slugs matching
+     * `screenshot-catalogue.collapsed_sidebar_pages`. A page that already
+     * carries a state keeps it unless there is an override.
+     *
+     * @param  array<int, array<string, mixed>>  $pages
+     * @return array<int, array<string, mixed>>
+     */
+    public static function withSidebarState(array $pages, ?string $override = null): array
+    {
+        $patterns = (array) config('screenshot-catalogue.collapsed_sidebar_pages', []);
+
+        return array_map(function (array $page) use ($override, $patterns): array {
+            $page['sidebar'] = $override
+                ?? $page['sidebar']
+                ?? (Str::is($patterns, (string) ($page['slug'] ?? '')) ? 'collapsed' : 'expanded');
+
+            return $page;
+        }, $pages);
     }
 
     /**

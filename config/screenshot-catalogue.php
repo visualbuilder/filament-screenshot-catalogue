@@ -37,6 +37,16 @@ return [
     ],
 
     /*
+     * Sitemap slugs captured with the panel's main sidebar collapsed to
+     * its icon rail, so wide pages (a mail client, a kanban board) get the
+     * room. Wildcards follow Str::is(), e.g. 'mail*'. Every other page is
+     * captured expanded. `screenshot:capture --sidebar=collapsed|expanded`
+     * overrides this for one run. Only applies to panels with
+     * sidebarCollapsibleOnDesktop(), and only at desktop widths.
+     */
+    'collapsed_sidebar_pages' => [],
+
+    /*
      * Optional CSS injected into every captured page just before the
      * screenshot is taken. Use this to lock host-specific scroll-driven
      * animations (shrinking topbars, hover-only states, etc.) into a
