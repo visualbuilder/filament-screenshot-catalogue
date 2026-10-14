@@ -223,4 +223,31 @@ class ScreenshotConfig
 
         return dirname(__DIR__, 2) . '/resources/js/capture-url.mjs';
     }
+
+    /**
+     * Whether `screenshot:url` may open this URL. Only http and https,
+     * and only the host of `app.url` (or a subdomain of it), a registered
+     * panel domain, or a host matching `screenshot-catalogue.url_allowed_hosts`.
+     */
+    public static function urlAllowed(string $url): bool
+    {
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        if (! in_array($scheme, ['http', 'https'], true) || $host === '') {
+            return false;
+        }
+
+        $appHost = strtolower((string) parse_url((string) config('app.url'), PHP_URL_HOST));
+        if ($appHost !== '' && ($host === $appHost || Str::endsWith($host, '.' . $appHost))) {
+            return true;
+        }
+
+        $patterns = collect(PanelRegistry::all())
+            ->map(fn ($descriptor): string => strtolower($descriptor->domain))
+            ->merge(array_map(fn ($pattern): string => strtolower(trim((string) $pattern)), (array) config('screenshot-catalogue.url_allowed_hosts', [])))
+            ->filter()
+            ->all();
+
+        return Str::is($patterns, $host);
+    }
 }

@@ -14,7 +14,8 @@ use Visualbuilder\FilamentScreenshotCatalogue\Services\ScreenshotConfig;
  * default to WordPress wp-login.php but can be overridden), and writes
  * one PNG per viewport to disk. No S3 upload, no panel registry —
  * this is the ad-hoc cousin of `screenshot:capture`, meant for grabbing
- * a shot of a WordPress admin page or any other stand-alone URL.
+ * a shot of a WordPress admin page or any other stand-alone URL. Only
+ * hosts that `ScreenshotConfig::urlAllowed()` accepts are opened.
  */
 class CaptureUrlScreenshotCommand extends Command
 {
@@ -47,6 +48,14 @@ class CaptureUrlScreenshotCommand extends Command
         }
 
         $loginUrl = (string) $this->option('login-url');
+
+        foreach (array_filter(['--url' => $url, '--login-url' => $loginUrl]) as $option => $value) {
+            if (! ScreenshotConfig::urlAllowed($value)) {
+                $this->error("{$option} is not an allowed URL. Only http(s) on the app host, a panel domain or a host in screenshot-catalogue.url_allowed_hosts can be captured.");
+
+                return self::FAILURE;
+            }
+        }
         $username = (string) $this->option('username');
         $password = (string) $this->option('password');
         $hasCredentials = $username !== '' && $password !== '';
