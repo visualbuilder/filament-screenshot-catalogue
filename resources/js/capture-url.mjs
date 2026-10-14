@@ -22,16 +22,20 @@
  *         "passwordSelector": "#user_pass",
  *         "submitSelector": "#wp-submit"
  *     } | null,
+ *     "axe": false,
  *     "shots": [
  *         { "viewport": { "name": "desktop", "width": 1280, "height": 800 },
  *           "output": "/abs/path/to/desktop.png" },
  *         ...
  *     ]
  *   }
+ *
+ * axe: true runs an axe-core WCAG 2.1 AA audit on each shot and writes
+ * <output>.axe.json (trailing .png replaced) beside the PNG.
  */
 
 import { chromium } from 'playwright';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { stdin } from 'node:process';
 
@@ -53,6 +57,43 @@ async function login(page, login) {
     ]);
 }
 
+function axePath(png) {
+    return /\.png$/i.test(png) ? png.replace(/\.png$/i, '.axe.json') : png + '.axe.json';
+}
+
+// Runs an axe-core WCAG 2.1 AA audit on the live page and writes the
+// violations beside the screenshot. A failed audit never fails the shot.
+async function auditPage(page, out) {
+    const path = axePath(out);
+    try {
+        const { default: AxeBuilder } = await import('@axe-core/playwright');
+        const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+        const summary = {
+            url: page.url(),
+            violations: results.violations.map((v) => ({
+                id: v.id,
+                impact: v.impact,
+                help: v.help,
+                helpUrl: v.helpUrl,
+                nodes: v.nodes.map((n) => ({ target: n.target, html: n.html.slice(0, 500), failureSummary: n.failureSummary })),
+            })),
+            passes: results.passes.length,
+            incomplete: results.incomplete.length,
+        };
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, JSON.stringify(summary, null, 1));
+    } catch (err) {
+        console.error('axe-failed: ' + err);
+        try {
+            await mkdir(dirname(path), { recursive: true });
+            await writeFile(path, JSON.stringify({ url: page.url(), error: String(err) }, null, 1));
+        } catch (writeErr) {
+            console.error('axe-failed: ' + writeErr);
+        }
+    }
+    return path;
+}
+
 async function captureShot(context, manifest, shot) {
     const page = await context.newPage();
     try {
@@ -66,6 +107,7 @@ async function captureShot(context, manifest, shot) {
         }
 
         await mkdir(dirname(shot.output), { recursive: true });
+        if (manifest.axe) await auditPage(page, shot.output);
         await page.screenshot({ path: shot.output, fullPage: !!manifest.fullPage });
         console.error(`captured ${shot.viewport.name} → ${shot.output}`);
     } finally {

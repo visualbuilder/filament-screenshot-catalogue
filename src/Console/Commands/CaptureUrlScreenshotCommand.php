@@ -32,7 +32,8 @@ class CaptureUrlScreenshotCommand extends Command
         {--height= : Viewport height in pixels (used when viewport=custom).}
         {--full-page : Capture the full scrollable page rather than just the viewport.}
         {--wait=1500 : Milliseconds to wait after navigation before the screenshot fires.}
-        {--ignore-https-errors : Ignore TLS errors (useful for local self-signed certs).}';
+        {--ignore-https-errors : Ignore TLS errors (useful for local self-signed certs).}
+        {--axe : Run an axe-core WCAG 2.1 AA audit on each shot; writes <shot>.axe.json beside the PNG.}';
 
     protected $description = 'Capture a single URL across one or more viewports, optionally logging in first.';
 
@@ -91,6 +92,7 @@ class CaptureUrlScreenshotCommand extends Command
                 'passwordSelector' => (string) $this->option('password-selector'),
                 'submitSelector' => (string) $this->option('submit-selector'),
             ] : null,
+            'axe' => (bool) $this->option('axe'),
             'shots' => $shots,
         ];
 
@@ -113,6 +115,12 @@ class CaptureUrlScreenshotCommand extends Command
 
         $this->newLine();
         $this->info('Saved ' . count($shots) . ' shot(s)');
+        foreach ($shots as $shot) {
+            $axe = str_ends_with(strtolower($shot['output']), '.png') ? substr($shot['output'], 0, -4) . '.axe.json' : $shot['output'] . '.axe.json';
+            if ($this->option('axe') && is_file($axe)) {
+                $this->line("  axe: {$axe}");
+            }
+        }
 
         return self::SUCCESS;
     }

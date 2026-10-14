@@ -25,6 +25,8 @@ The package fans out one `CapturePageScreenshotsJob` per sitemap entry plus a fi
 |---|---|
 | `panel:sitemap --panel=KEY` | Generate `storage/app/sitemap-{panelId}.json` with one entry per navigable URL (resources, custom pages, auth screens). Re-run when routes change. |
 | `screenshot:capture --panel=KEY --page=SLUG --tag=latest` | Synchronous one-page run for debugging. Bypasses the queue. |
+| `screenshot:capture --panel=KEY --page=SLUG --axe` | Also runs an axe-core WCAG 2.1 AA audit per shot; writes `<shot>.axe.json` beside the PNG. |
+| `screenshot:url --url=URL --output=FILE --axe` | The same for one URL; the audit goes to FILE with `.png` replaced by `.axe.json`. |
 | `screenshot:dispatch --panel=KEY --tag=latest` | Queue per-page capture jobs + final index rebuild. The right command for full panel runs. |
 | `screenshot:rebuild-index --panel=KEY --tag=latest` | Re-render `index.html` against the existing PNGs without re-capturing. Use after editing the catalogue's Blade template. |
 
@@ -70,6 +72,7 @@ Before dispatching a run, make sure:
 3. **Queue worker is draining the right queue** (see `screenshot:dispatch --queue=...` if your app uses a non-default).
 4. **Playwright is installed** in the project: `npx playwright install chromium`.
 5. **The S3 disk** (`config('screenshot-catalogue.disk')`, default `s3_public`) is configured.
+6. **`--axe` needs @axe-core/playwright** in the host project: `npm i -D @axe-core/playwright`.
 
 ## Adding a new panel
 

@@ -28,7 +28,8 @@ class CaptureScreenshotsCommand extends Command
         {--tag=latest : Version segment for the S3 path. "latest" overwrites; pass a tag (e.g. v2.5.0) for an immutable run.}
         {--no-upload : Capture locally only — skip S3 upload and index.html.}
         {--full-height : Capture the full scrollable document instead of just the viewport.}
-        {--sidebar= : collapsed|expanded for every page in this run. Default: collapsed for slugs in screenshot-catalogue.collapsed_sidebar_pages, expanded otherwise.}';
+        {--sidebar= : collapsed|expanded for every page in this run. Default: collapsed for slugs in screenshot-catalogue.collapsed_sidebar_pages, expanded otherwise.}
+        {--axe : Run an axe-core WCAG 2.1 AA audit on each shot; writes <shot>.axe.json beside the PNG.}';
 
     protected $description = 'Capture a visual catalogue of a Filament panel — pages × viewports × modes — synchronously.';
 
@@ -85,6 +86,7 @@ class CaptureScreenshotsCommand extends Command
             // lock scroll-driven animations into a stable state.
             'captureTimeCss' => ScreenshotConfig::captureTimeCss(),
             'fullPage' => (bool) $this->option('full-height'),
+            'axe' => (bool) $this->option('axe'),
         ];
 
         $this->info("Capturing {$panelKey}: " . count($pages) . ' page(s) × '
@@ -106,6 +108,9 @@ class CaptureScreenshotsCommand extends Command
         if ($this->option('no-upload')) {
             foreach ($captured as $shot) {
                 $this->line("  {$shot['path']}");
+                if (is_string($shot['axe'] ?? null) && $shot['axe'] !== '') {
+                    $this->line("    axe: {$shot['axe']}");
+                }
             }
 
             return self::SUCCESS;
@@ -127,7 +132,7 @@ class CaptureScreenshotsCommand extends Command
     }
 
     /**
-     * @param  array<int, array{slug: string, viewport: string, mode: string, path: string}>  $captured
+     * @param  array<int, array{slug: string, viewport: string, mode: string, path: string, axe?: string|null}>  $captured
      */
     private function processAndUpload(array $captured, string $env, string $panelKey, string $panelId, string $version): void
     {
