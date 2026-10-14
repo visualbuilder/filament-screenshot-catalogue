@@ -27,7 +27,8 @@ class CaptureScreenshotsCommand extends Command
         {--viewport=* : Viewport to capture (desktop|tablet|mobile). Default: desktop only.}
         {--tag=latest : Version segment for the S3 path. "latest" overwrites; pass a tag (e.g. v2.5.0) for an immutable run.}
         {--no-upload : Capture locally only — skip S3 upload and index.html.}
-        {--full-height : Capture the full scrollable document instead of just the viewport.}';
+        {--full-height : Capture the full scrollable document instead of just the viewport.}
+        {--sidebar= : collapsed|expanded for every page in this run. Default: collapsed for slugs in screenshot-catalogue.collapsed_sidebar_pages, expanded otherwise.}';
 
     protected $description = 'Capture a visual catalogue of a Filament panel — pages × viewports × modes — synchronously.';
 
@@ -54,7 +55,14 @@ class CaptureScreenshotsCommand extends Command
             return self::FAILURE;
         }
 
-        $pages = $this->resolvePages((array) $this->option('page'), $panelKey);
+        $sidebar = $this->option('sidebar');
+        if ($sidebar !== null && ! in_array($sidebar, ['collapsed', 'expanded'], true)) {
+            $this->error("Unknown --sidebar value: {$sidebar}. Use collapsed or expanded.");
+
+            return self::FAILURE;
+        }
+
+        $pages = ScreenshotConfig::withSidebarState($this->resolvePages((array) $this->option('page'), $panelKey), $sidebar);
         $viewports = ScreenshotConfig::resolveViewports((array) $this->option('viewport'));
         $modes = ScreenshotConfig::resolveModes((array) $this->option('mode'));
 
