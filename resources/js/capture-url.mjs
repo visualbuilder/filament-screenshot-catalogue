@@ -63,13 +63,15 @@ function axePath(png) {
 
 // Runs an axe-core WCAG 2.1 AA audit on the live page and writes the
 // violations beside the screenshot. A failed audit never fails the shot.
+const safeUrl = (u) => String(u).replace(/(signature=)[^&\s]*/g, '$1***');
+
 async function auditPage(page, out) {
     const path = axePath(out);
     try {
         const { default: AxeBuilder } = await import('@axe-core/playwright');
         const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
         const summary = {
-            url: page.url(),
+            url: safeUrl(page.url()),
             violations: results.violations.map((v) => ({
                 id: v.id,
                 impact: v.impact,
@@ -83,12 +85,12 @@ async function auditPage(page, out) {
         await mkdir(dirname(path), { recursive: true });
         await writeFile(path, JSON.stringify(summary, null, 1));
     } catch (err) {
-        console.error('axe-failed: ' + err);
+        console.error('axe-failed: ' + safeUrl(err));
         try {
             await mkdir(dirname(path), { recursive: true });
-            await writeFile(path, JSON.stringify({ url: page.url(), error: String(err) }, null, 1));
+            await writeFile(path, JSON.stringify({ url: safeUrl(page.url()), error: safeUrl(err) }, null, 1));
         } catch (writeErr) {
-            console.error('axe-failed: ' + writeErr);
+            console.error('axe-failed: ' + safeUrl(writeErr));
         }
     }
     return path;
