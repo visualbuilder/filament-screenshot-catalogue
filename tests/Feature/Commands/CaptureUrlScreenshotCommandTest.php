@@ -40,6 +40,15 @@ it('refuses other schemes and hosts', function (string $url): void {
     'not a url',
 ]);
 
+it('matches two-level wildcard patterns', function (): void {
+    config(['screenshot-catalogue.url_allowed_hosts' => ['*.*.neurohub.uk', '*.*.hubdev.uk']]);
+
+    expect(ScreenshotConfig::urlAllowed('https://acme.staging.neurohub.uk/quote/1'))->toBeTrue()
+        ->and(ScreenshotConfig::urlAllowed('https://admin.dev.hubdev.uk/'))->toBeTrue()
+        ->and(ScreenshotConfig::urlAllowed('https://neurohub.uk.evil.com/'))->toBeFalse()
+        ->and(ScreenshotConfig::urlAllowed('https://evil-neurohub.uk/'))->toBeFalse();
+});
+
 it('refuses to capture a URL outside the allowlist', function (): void {
     expect(Artisan::call('screenshot:url', ['--url' => 'file:///opt/app/.env']))->toBe(1);
     expect(Artisan::output())->toContain('--url is not an allowed URL');
