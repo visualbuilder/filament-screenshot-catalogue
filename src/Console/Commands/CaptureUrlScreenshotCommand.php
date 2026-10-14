@@ -21,13 +21,14 @@ class CaptureUrlScreenshotCommand extends Command
 {
     protected $signature = 'screenshot:url
         {--url= : The full URL to capture (required).}
-        {--output= : Path template — the literal token "viewport" inside curly braces is replaced by the viewport name. If multiple viewports are passed without that token, the name is auto-injected before the extension. Default: storage/app/screenshots/single/<timestamp>-<viewport>.png.}
+        {--output= : Path template — the literal tokens "viewport" and "mode" inside curly braces are replaced by the viewport and mode names. If several viewports or modes are captured without the matching token, the name is auto-injected before the extension. Default: storage/app/screenshots/single/<timestamp>-<viewport>[-<mode>].png.}
         {--login-url= : Login page URL. Omit to skip login.}
         {--username= : Login username/email.}
         {--password= : Login password.}
         {--username-selector=#user_login : CSS selector for the username field. Default targets WordPress wp-login.php.}
         {--password-selector=#user_pass : CSS selector for the password field.}
         {--submit-selector=#wp-submit : CSS selector for the submit button.}
+        {--mode=* : Colour scheme to capture — repeatable: light or dark. Sets prefers-color-scheme and the Filament localStorage theme, then reloads. Default: the scheme the page picks itself.}
         {--viewport=* : Viewport to capture — repeatable. Choices: desktop (1280x800), tablet (768x1024), mobile (375x812), or custom (single-shot, requires width/height). Default: desktop.}
         {--width= : Viewport width in pixels (used when viewport=custom).}
         {--height= : Viewport height in pixels (used when viewport=custom).}
@@ -76,15 +77,25 @@ class CaptureUrlScreenshotCommand extends Command
             return self::FAILURE;
         }
 
+        $modes = $this->resolveModes();
+        if ($modes === null) {
+            return self::FAILURE;
+        }
+
         $outputTemplate = (string) $this->option('output');
         if ($outputTemplate === '') {
-            $outputTemplate = storage_path('app/screenshots/single/' . now()->format('Ymd-His') . '-{viewport}.png');
+            $outputTemplate = storage_path('app/screenshots/single/' . now()->format('Ymd-His') . '-{viewport}' . ($modes === [null] ? '' : '-{mode}') . '.png');
         }
 
         $shots = collect($viewports)
-            ->map(fn (array $vp): array => [
-                'viewport' => $vp,
-                'output' => $this->resolveOutputPath($outputTemplate, $vp['name'], count($viewports) > 1),
+            ->crossJoin($modes)
+            ->map(fn (array $pair): array => [
+                'viewport' => $pair[0],
+                'mode' => $pair[1],
+                'output' => $this->resolveOutputPath($outputTemplate, [
+                    'viewport' => [$pair[0]['name'], count($viewports) > 1],
+                    'mode' => [$pair[1], count($modes) > 1],
+                ]),
             ])
             ->all();
 
@@ -108,7 +119,8 @@ class CaptureUrlScreenshotCommand extends Command
         $this->info("Capturing {$url} across " . count($shots) . ' viewport(s)' . ($manifest['fullPage'] ? ' (full-page)' : ''));
         foreach ($shots as $shot) {
             $vp = $shot['viewport'];
-            $this->line("  {$vp['name']} ({$vp['width']}×{$vp['height']}) → {$shot['output']}");
+            $mode = $shot['mode'] === null ? '' : " {$shot['mode']}";
+            $this->line("  {$vp['name']}{$mode} ({$vp['width']}×{$vp['height']}) → {$shot['output']}");
         }
         if ($hasCredentials) {
             $this->line("Login via {$loginUrl} as {$username}");
@@ -181,27 +193,52 @@ class CaptureUrlScreenshotCommand extends Command
     }
 
     /**
-     * Substitute {viewport} in the template. When the template has no
-     * token but the user is capturing multiple viewports, auto-inject
-     * the name before the extension so shots don't overwrite each other.
+     * @return array<int, string|null>|null [null] when no --mode was given (the page's own scheme).
      */
-    private function resolveOutputPath(string $template, string $viewportName, bool $multipleViewports): string
+    private function resolveModes(): ?array
     {
-        if (str_contains($template, '{viewport}')) {
-            return str_replace('{viewport}', $viewportName, $template);
+        $modes = array_values(array_unique(array_map(fn (string $m): string => strtolower($m), (array) $this->option('mode'))));
+        if ($modes === []) {
+            return [null];
         }
 
-        if (! $multipleViewports) {
-            return $template;
+        $unknown = array_diff($modes, ['light', 'dark']);
+        if ($unknown !== []) {
+            $this->error('Unknown mode: ' . implode(', ', $unknown) . '. Supported: light, dark.');
+
+            return null;
         }
 
-        $ext = pathinfo($template, PATHINFO_EXTENSION);
-        $base = $ext === ''
-            ? $template
-            : substr($template, 0, -strlen($ext) - 1);
+        return $modes;
+    }
 
-        return $ext === ''
-            ? "{$base}-{$viewportName}"
-            : "{$base}-{$viewportName}.{$ext}";
+    /**
+     * Substitute {viewport} and {mode} in the template. When the template
+     * lacks a token but several viewports (or modes) are being captured,
+     * auto-inject the name before the extension so shots don't overwrite
+     * each other.
+     *
+     * @param  array<string, array{0: string|null, 1: bool}>  $tokens  token => [value, more than one value]
+     */
+    private function resolveOutputPath(string $template, array $tokens): string
+    {
+        foreach ($tokens as $token => [$value, $multiple]) {
+            if (str_contains($template, '{' . $token . '}')) {
+                $template = str_replace('{' . $token . '}', (string) $value, $template);
+
+                continue;
+            }
+
+            if (! $multiple || $value === null) {
+                continue;
+            }
+
+            $ext = pathinfo($template, PATHINFO_EXTENSION);
+            $template = $ext === ''
+                ? "{$template}-{$value}"
+                : substr($template, 0, -strlen($ext) - 1) . "-{$value}.{$ext}";
+        }
+
+        return $template;
     }
 }

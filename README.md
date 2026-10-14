@@ -214,6 +214,7 @@ php artisan screenshot:dispatch --panel=admin --mode=dark          # dark only f
 |---|---|
 | `screenshot:dispatch` | `light` and `dark` |
 | `screenshot:capture` | `light` only |
+| `screenshot:url` | none: the page keeps the scheme it picks itself |
 
 How a mode is applied: before the page is reloaded and captured, the runner sets `localStorage.theme` to `light` or `dark` and toggles the `dark` class on `<html>`. That is the same switch Filament's own theme toggle uses, so the panel renders its real dark styles. The panel must have dark mode enabled (`->darkMode()`, on by default in Filament). If your theme switches colour schemes some other way, publish the runner (`--tag=filament-screenshot-catalogue-js`) and change `setMode()` in `capture.mjs`.
 
@@ -240,7 +241,13 @@ How a mode is applied: before the page is reloaded and captured, the runner sets
 php artisan screenshot:url --url="https://app.example.com/quotes/12?signature=…" --output=storage/app/quote.png --viewport=desktop --viewport=mobile
 ```
 
-It captures in the page's own colour scheme; there is no `--mode`. For safety it only opens `http` and `https` URLs on the host of `app.url` (or a subdomain of it), a registered panel domain, or a host matching `url_allowed_hosts`:
+Pass `--mode=light` and/or `--mode=dark` to force a scheme; each viewport × mode is one shot. The runner emulates `prefers-color-scheme` and sets Filament's `localStorage.theme`, then reloads, so both Filament pages and plain sites follow it. Without `--mode` the page keeps the scheme it picks itself and file names are unchanged. `--output` accepts `{viewport}` and `{mode}` tokens; when several viewports or modes are captured without the matching token, the name is added before the extension (`shot-desktop-dark.png`).
+
+```bash
+php artisan screenshot:url --url="https://app.example.com/quotes/12?signature=…" --output="storage/app/quote-{viewport}-{mode}.png" --mode=light --mode=dark
+```
+
+For safety it only opens `http` and `https` URLs on the host of `app.url` (or a subdomain of it), a registered panel domain, or a host matching `url_allowed_hosts`:
 
 ```php
 'url_allowed_hosts' => ['*.*.example.com', 'www.example-marketing.com'],   // Str::is() patterns
