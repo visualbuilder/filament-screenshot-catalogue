@@ -18,8 +18,12 @@
  *     "outDir": "/tmp/screenshots/<run>",
  *     "viewports": [{ "name": "desktop", "width": 1280, "height": 800 }, ...],
  *     "modes": ["light", "dark"],
- *     "pages": [{ "slug": "dashboard", "url": "/", "sidebar": "expanded" }, ...]
+ *     "pages": [{ "slug": "dashboard", "url": "/", "sidebar": "expanded" }, ...],
+ *     "axe": false
  *   }
+ *
+ * axe: true runs an axe-core WCAG 2.1 AA audit on each shot and writes
+ * <shot>.axe.json beside the PNG.
  *
  * Each capture is written to:
  *   {outDir}/{slug}/{viewport}-{mode}.png
@@ -107,6 +111,45 @@ async function injectChromeHider(page) {
     });
 }
 
+function axePath(png) {
+    return /\.png$/i.test(png) ? png.replace(/\.png$/i, '.axe.json') : png + '.axe.json';
+}
+
+// Runs an axe-core WCAG 2.1 AA audit on the live page and writes the
+// violations beside the screenshot. A failed audit never fails the shot.
+const safeUrl = (u) => String(u).replace(/(signature=)[^&\s]*/g, '$1***');
+
+async function auditPage(page, out) {
+    const path = axePath(out);
+    try {
+        const { default: AxeBuilder } = await import('@axe-core/playwright');
+        const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+        const summary = {
+            url: safeUrl(page.url()),
+            violations: results.violations.map((v) => ({
+                id: v.id,
+                impact: v.impact,
+                help: v.help,
+                helpUrl: v.helpUrl,
+                nodes: v.nodes.map((n) => ({ target: n.target, html: n.html.slice(0, 500), failureSummary: n.failureSummary })),
+            })),
+            passes: results.passes.length,
+            incomplete: results.incomplete.length,
+        };
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, JSON.stringify(summary, null, 1));
+    } catch (err) {
+        console.error('axe-failed: ' + safeUrl(err));
+        try {
+            await mkdir(dirname(path), { recursive: true });
+            await writeFile(path, JSON.stringify({ url: safeUrl(page.url()), error: safeUrl(err) }, null, 1));
+        } catch (writeErr) {
+            console.error('axe-failed: ' + safeUrl(writeErr));
+        }
+    }
+    return path;
+}
+
 function normalisePath(path) {
     return path.replace(/\/+$/, '') || '/';
 }
@@ -140,8 +183,6 @@ async function capturePage(context, manifest, target, viewport, mode) {
         throw new RedirectedCapture(`capture-redirected: ${target.slug} ${viewport.name}-${mode} redirected to ${landed} (${redirectReason(landed, manifest)})`);
     }
 
-    await injectChromeHider(page);
-
     // Filament hydrates over Livewire — wait for the page chrome and
     // give Alpine + any async requests a moment to settle so the shot
     // catches the rendered state, not a flash of unstyled content.
@@ -154,6 +195,14 @@ async function capturePage(context, manifest, target, viewport, mode) {
     }
     await page.waitForTimeout(1500);
 
+    const out = `${manifest.outDir}/${target.slug}/${viewport.name}-${mode}.png`;
+    await mkdir(dirname(out), { recursive: true });
+
+    // Audit before the chrome hider runs: it hides the skip link, which
+    // axe must still see.
+    const axe = manifest.axe ? await auditPage(page, out) : null;
+    await injectChromeHider(page);
+
     // Optional capture-time CSS — used by host themes to lock scroll-driven
     // animations (e.g. shrinking topbars) into a stable state for the
     // catalogue. The string comes from `panel-screenshot-catalogue.capture_time_css`
@@ -163,8 +212,6 @@ async function capturePage(context, manifest, target, viewport, mode) {
         await page.waitForTimeout(150);
     }
 
-    const out = `${manifest.outDir}/${target.slug}/${viewport.name}-${mode}.png`;
-    await mkdir(dirname(out), { recursive: true });
     // Default: capture viewport-only — every shot in the catalogue should
     // represent what fits on a real device. Long tables/forms scrolling
     // off-screen is a deliberate UX signal we want to see, not a problem
@@ -174,7 +221,7 @@ async function capturePage(context, manifest, target, viewport, mode) {
     await page.screenshot({ path: out, fullPage: Boolean(manifest.fullPage) });
 
     await page.close();
-    return out;
+    return { out, axe };
 }
 
 (async () => {
@@ -214,8 +261,8 @@ async function capturePage(context, manifest, target, viewport, mode) {
                             const guestContext = await browser.newContext({ ignoreHTTPSErrors: true });
                             try {
                                 try {
-                                    const out = await capturePage(guestContext, manifest, target, viewport, mode);
-                                    captured.push({ slug: target.slug, viewport: viewport.name, mode, path: out });
+                                    const { out, axe } = await capturePage(guestContext, manifest, target, viewport, mode);
+                                    captured.push({ slug: target.slug, viewport: viewport.name, mode, path: out, axe });
                                     console.error(`captured ${target.slug} ${viewport.name}-${mode} (guest)`);
                                 } catch (err) {
                                     if (!(err instanceof RedirectedCapture)) throw err;
@@ -244,8 +291,8 @@ async function capturePage(context, manifest, target, viewport, mode) {
                 for (const viewport of manifest.viewports) {
                     for (const mode of manifest.modes) {
                         try {
-                            const out = await capturePage(context, manifest, target, viewport, mode);
-                            captured.push({ slug: target.slug, viewport: viewport.name, mode, path: out });
+                            const { out, axe } = await capturePage(context, manifest, target, viewport, mode);
+                            captured.push({ slug: target.slug, viewport: viewport.name, mode, path: out, axe });
                             console.error(`captured ${target.slug} ${viewport.name}-${mode}`);
                         } catch (err) {
                             if (!(err instanceof RedirectedCapture)) throw err;

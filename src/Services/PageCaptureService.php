@@ -24,7 +24,7 @@ class PageCaptureService
      * @param  array<int, array{slug: string, url: string, label?: string, auth?: string}>  $pages
      * @param  array<int, array{name: string, width: int, height: int}>  $viewports
      * @param  array<int, string>  $modes
-     * @return array<int, array{slug: string, viewport: string, mode: string, path: string, url: string}>
+     * @return array<int, array{slug: string, viewport: string, mode: string, path: string, url: string, axe?: string|null}>
      */
     public function capture(string $panelKey, array $pages, array $viewports, array $modes, string $env, string $version, ?string $runId = null, bool $fullPage = false): array
     {
@@ -72,8 +72,8 @@ class PageCaptureService
     }
 
     /**
-     * @param  array<int, array{slug: string, viewport: string, mode: string, path: string}>  $captured
-     * @return array<int, array{slug: string, viewport: string, mode: string, path: string, url: string}>
+     * @param  array<int, array{slug: string, viewport: string, mode: string, path: string, axe?: string|null}>  $captured
+     * @return array<int, array{slug: string, viewport: string, mode: string, path: string, url: string, axe?: string|null}>
      */
     private function uploadShots(array $captured, string $env, string $panelKey, string $panelId, string $version): array
     {
