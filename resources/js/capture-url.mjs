@@ -25,10 +25,15 @@
  *     "axe": false,
  *     "shots": [
  *         { "viewport": { "name": "desktop", "width": 1280, "height": 800 },
- *           "output": "/abs/path/to/desktop.png" },
+ *           "mode": "dark" | "light" | null,
+ *           "output": "/abs/path/to/desktop-dark.png" },
  *         ...
  *     ]
  *   }
+ *
+ * A shot's mode, when set, emulates prefers-color-scheme and writes
+ * Filament's `localStorage.theme`, then reloads so the page renders in that
+ * scheme. null leaves the page's own scheme alone.
  *
  * axe: true runs an axe-core WCAG 2.1 AA audit on each shot and writes
  * <output>.axe.json (trailing .png replaced) beside the PNG.
@@ -96,6 +101,17 @@ async function auditPage(page, out) {
     return path;
 }
 
+// Filament (and most theme toggles) read localStorage.theme and the `dark`
+// class on <html>; plain sites follow prefers-color-scheme. Set both, then
+// reload so the first paint already uses the scheme.
+async function setMode(page, mode) {
+    await page.evaluate((mode) => {
+        localStorage.setItem('theme', mode);
+        document.documentElement.classList.toggle('dark', mode === 'dark');
+    }, mode);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+}
+
 async function captureShot(context, manifest, shot) {
     const page = await context.newPage();
     try {
@@ -103,7 +119,9 @@ async function captureShot(context, manifest, shot) {
             width: shot.viewport.width,
             height: shot.viewport.height,
         });
+        if (shot.mode) await page.emulateMedia({ colorScheme: shot.mode });
         await page.goto(manifest.url, { waitUntil: 'domcontentloaded' });
+        if (shot.mode) await setMode(page, shot.mode);
         if (manifest.waitMs > 0) {
             await page.waitForTimeout(manifest.waitMs);
         }
@@ -111,7 +129,7 @@ async function captureShot(context, manifest, shot) {
         await mkdir(dirname(shot.output), { recursive: true });
         if (manifest.axe) await auditPage(page, shot.output);
         await page.screenshot({ path: shot.output, fullPage: !!manifest.fullPage });
-        console.error(`captured ${shot.viewport.name} → ${shot.output}`);
+        console.error(`captured ${shot.viewport.name}${shot.mode ? ' ' + shot.mode : ''} → ${shot.output}`);
     } finally {
         await page.close();
     }

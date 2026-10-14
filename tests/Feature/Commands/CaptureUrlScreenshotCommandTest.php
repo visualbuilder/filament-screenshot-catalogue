@@ -64,6 +64,66 @@ it('refuses a login URL outside the allowlist', function (): void {
     expect(Artisan::output())->toContain('--login-url is not an allowed URL');
 });
 
+describe('--mode', function (): void {
+    beforeEach(function (): void {
+        config(['screenshot-catalogue.capture_url_script' => __DIR__ . '/../../Fixtures/fake-capture-url.mjs']);
+        $this->tmp = sys_get_temp_dir() . '/fake-capture-url-' . uniqid();
+        mkdir($this->tmp);
+        $this->manifestPath = $this->tmp . '/manifest.json';
+        putenv('FAKE_CAPTURE_MANIFEST=' . $this->manifestPath);
+        $_ENV['FAKE_CAPTURE_MANIFEST'] = $this->manifestPath;
+    });
+
+    afterEach(function (): void {
+        array_map('unlink', glob($this->tmp . '/*') ?: []);
+        @rmdir($this->tmp);
+        unset($_ENV['FAKE_CAPTURE_MANIFEST']);
+        putenv('FAKE_CAPTURE_MANIFEST');
+    });
+
+    $shots = fn (string $path): array => collect(json_decode(file_get_contents($path), true)['shots'])
+        ->map(fn (array $s): array => [$s['viewport']['name'], $s['mode'], basename($s['output'])])
+        ->all();
+
+    it('leaves the scheme alone and keeps the file name when no --mode is given', function () use ($shots): void {
+        expect(Artisan::call('screenshot:url', ['--url' => 'https://app.example.test', '--output' => $this->tmp . '/shot.png']))->toBe(0);
+
+        expect($shots($this->manifestPath))->toBe([['desktop', null, 'shot.png']]);
+    });
+
+    it('captures one shot per viewport and mode, injecting both names', function () use ($shots): void {
+        expect(Artisan::call('screenshot:url', [
+            '--url' => 'https://app.example.test',
+            '--output' => $this->tmp . '/shot.png',
+            '--viewport' => ['desktop', 'mobile'],
+            '--mode' => ['light', 'DARK'],
+        ]))->toBe(0);
+
+        expect($shots($this->manifestPath))->toBe([
+            ['desktop', 'light', 'shot-desktop-light.png'],
+            ['desktop', 'dark', 'shot-desktop-dark.png'],
+            ['mobile', 'light', 'shot-mobile-light.png'],
+            ['mobile', 'dark', 'shot-mobile-dark.png'],
+        ]);
+        expect(Artisan::output())->toContain('desktop dark (1280×800)');
+    });
+
+    it('honours {mode} and {viewport} tokens and keeps a single mode out of the name', function () use ($shots): void {
+        Artisan::call('screenshot:url', ['--url' => 'https://app.example.test', '--output' => $this->tmp . '/{mode}-{viewport}.png', '--mode' => ['dark']]);
+        expect($shots($this->manifestPath))->toBe([['desktop', 'dark', 'dark-desktop.png']]);
+
+        Artisan::call('screenshot:url', ['--url' => 'https://app.example.test', '--output' => $this->tmp . '/one.png', '--mode' => ['dark']]);
+        expect($shots($this->manifestPath))->toBe([['desktop', 'dark', 'one.png']]);
+    });
+
+    it('rejects an unknown mode before capturing', function (): void {
+        expect(Artisan::call('screenshot:url', ['--url' => 'https://app.example.test', '--output' => $this->tmp . '/shot.png', '--mode' => ['sepia']]))->toBe(1);
+
+        expect(Artisan::output())->toContain('Unknown mode: sepia')
+            ->and(file_exists($this->manifestPath))->toBeFalse();
+    });
+})->skip(fn () => (new \Symfony\Component\Process\ExecutableFinder)->find('node') === null, 'node is required');
+
 describe('--axe', function (): void {
     beforeEach(function (): void {
         config(['screenshot-catalogue.capture_url_script' => __DIR__ . '/../../Fixtures/fake-capture-url.mjs']);
