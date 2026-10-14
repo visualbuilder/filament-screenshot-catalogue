@@ -73,6 +73,15 @@ return [
     ),
 
     /*
+     * Hosts `screenshot:url` may open, for both --url and --login-url.
+     * The host of `app.url`, its subdomains and every registered panel
+     * domain are always allowed; list any other host here. Wildcards
+     * follow Str::is(), e.g. '*.example.com'. Only http and https URLs
+     * are ever opened, so file:// and similar schemes are refused.
+     */
+    'url_allowed_hosts' => array_filter(explode(',', (string) env('PANEL_SCREENSHOT_CATALOGUE_URL_ALLOWED_HOSTS', ''))),
+
+    /*
      * Sitemap entries to omit from the catalogue. Match against the
      * `slug` field emitted by `php artisan panel:sitemap`, which uses
      * Filament's `{resource}.{page}` form for resource pages
