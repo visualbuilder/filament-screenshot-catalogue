@@ -194,8 +194,59 @@ Tag-versioning: `--tag=latest` overwrites in place (continuous capture), any oth
 | `screenshot:capture --panel=KEY --page=SLUG --tag=latest` | Synchronous run, single page or a few. Useful for debug. |
 | `screenshot:capture ... --sidebar=collapsed` | Same, with the main sidebar collapsed (or `expanded`) on every page, whatever `collapsed_sidebar_pages` says. |
 | `screenshot:rebuild-index --panel=KEY --tag=latest` | Re-render `index.html` from the existing PNGs without re-capturing. |
+| `screenshot:url --url=URL --output=FILE` | One stand-alone URL (a signed public page, a marketing site), no panel registry and no S3 upload. See *Single URLs* below. |
 
-All four accept `--panel=KEY` where `KEY` is the friendly CLI name registered in the descriptor (e.g. `admin`). The package translates to Filament's internal panel ID for URL/route resolution.
+All four panel commands accept `--panel=KEY` where `KEY` is the friendly CLI name registered in the descriptor (e.g. `admin`). The package translates to Filament's internal panel ID for URL/route resolution.
+
+## Capture options
+
+### Light and dark mode
+
+Pick the colour scheme with `--mode`. It is repeatable, and each mode produces its own `{viewport}-{mode}.png`.
+
+```bash
+php artisan screenshot:capture --panel=admin --page=dashboard --mode=dark
+php artisan screenshot:capture --panel=admin --page=dashboard --mode=light --mode=dark
+php artisan screenshot:dispatch --panel=admin --mode=dark          # dark only for the whole panel
+```
+
+| Command | Default modes |
+|---|---|
+| `screenshot:dispatch` | `light` and `dark` |
+| `screenshot:capture` | `light` only |
+
+How a mode is applied: before the page is reloaded and captured, the runner sets `localStorage.theme` to `light` or `dark` and toggles the `dark` class on `<html>`. That is the same switch Filament's own theme toggle uses, so the panel renders its real dark styles. The panel must have dark mode enabled (`->darkMode()`, on by default in Filament). If your theme switches colour schemes some other way, publish the runner (`--tag=filament-screenshot-catalogue-js`) and change `setMode()` in `capture.mjs`.
+
+### Viewports
+
+`--viewport=desktop|tablet|mobile`, repeatable. `screenshot:dispatch` captures all three by default and `screenshot:capture` captures `desktop` only. The sizes come from the `viewports` config.
+
+### Other options
+
+| Option | Commands | What it does |
+|---|---|---|
+| `--page=SLUG` | `capture`, `dispatch` | Limit the run to these sitemap slugs (repeatable). |
+| `--tag=TAG` | `capture`, `dispatch` | Version segment of the S3 path. `latest` overwrites; any other tag is an immutable run. |
+| `--full-height` | `capture`, `dispatch` | Capture the whole scrollable page instead of the viewport. |
+| `--sidebar=collapsed\|expanded` | `capture` | Force the main sidebar state on every page, overriding `collapsed_sidebar_pages`. |
+| `--no-upload` | `capture` | Keep the PNGs local; skip S3 and `index.html`. |
+| `--axe` | `capture`, `url` | Run an axe-core WCAG 2.1 AA audit on each shot and write `<shot>.axe.json` beside the PNG. Needs `npm i -D @axe-core/playwright` in the host. A failed audit never fails the screenshot. |
+
+## Single URLs
+
+`screenshot:url` captures one URL across one or more viewports, optionally logging in through a plain form first (the selectors default to WordPress's `wp-login.php`).
+
+```bash
+php artisan screenshot:url --url="https://app.example.com/quotes/12?signature=…" --output=storage/app/quote.png --viewport=desktop --viewport=mobile
+```
+
+It captures in the page's own colour scheme; there is no `--mode`. For safety it only opens `http` and `https` URLs on the host of `app.url` (or a subdomain of it), a registered panel domain, or a host matching `url_allowed_hosts`:
+
+```php
+'url_allowed_hosts' => ['*.*.example.com', 'www.example-marketing.com'],   // Str::is() patterns
+```
+
+Anything else, including `file://` URLs and internal addresses, is refused before the browser starts. The same check applies to `--login-url`.
 
 ## What's *not* in the package (host responsibilities)
 
