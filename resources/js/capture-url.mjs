@@ -70,11 +70,16 @@ function axePath(png) {
 // violations beside the screenshot. A failed audit never fails the shot.
 const safeUrl = (u) => String(u).replace(/(signature=)[^&\s]*/g, '$1***');
 
+// Frames sandboxed without allow-scripts (HTML email bodies, for example) can't
+// run axe and hold content the app didn't write, so the audit skips them
+// outright rather than trying to inject into each one.
+const SCRIPTLESS_FRAMES = 'iframe[sandbox]:not([sandbox~="allow-scripts"])';
+
 async function auditPage(page, out) {
     const path = axePath(out);
     try {
         const { default: AxeBuilder } = await import('@axe-core/playwright');
-        const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).analyze();
+        const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa']).exclude(SCRIPTLESS_FRAMES).analyze();
         const summary = {
             url: safeUrl(page.url()),
             violations: results.violations.map((v) => ({

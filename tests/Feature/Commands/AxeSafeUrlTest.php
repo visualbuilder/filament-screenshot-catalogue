@@ -28,3 +28,11 @@ it('applies safeUrl to the url and error fields in both scripts', function (stri
         ->toContain('error: safeUrl(err)')
         ->not->toContain('url: page.url()');
 })->with('capture scripts');
+
+it('skips frames that cannot run scripts in both scripts', function (string $script): void {
+    $source = file_get_contents(__DIR__ . '/../../../resources/js/' . $script);
+
+    expect($source)->toContain(<<<'JS'
+const SCRIPTLESS_FRAMES = 'iframe[sandbox]:not([sandbox~="allow-scripts"])';
+JS)->toContain('.exclude(SCRIPTLESS_FRAMES).analyze()');
+})->with('capture scripts');
